@@ -17,11 +17,14 @@ import {ToastService} from "./shared/toast/toast.service";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import {ConversationsComponent} from "./conversations/conversations.component";
+import {HeaderComponent} from "./layout/header/header.component";
+import {SendComponent} from "./messages/send/send.component";
+import {MessagesComponent} from "./messages/messages.component";
 
 @Component({
   selector: 'wac-root',
   standalone: true,
-  imports: [RouterOutlet, NgbAccordionDirective, NgbAccordionItem, NgbAccordionHeader, NgbAccordionButton, NgbAccordionCollapse, NgbAccordionBody, FaIconComponent, NavbarComponent, NgbToast, ConversationsComponent],
+  imports: [RouterOutlet, NgbAccordionDirective, NgbAccordionItem, NgbAccordionHeader, NgbAccordionButton, NgbAccordionCollapse, NgbAccordionBody, FaIconComponent, NavbarComponent, NgbToast, ConversationsComponent, HeaderComponent, SendComponent, MessagesComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss'
 })

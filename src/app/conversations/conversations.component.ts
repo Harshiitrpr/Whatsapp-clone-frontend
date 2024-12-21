@@ -6,6 +6,9 @@ import {Conversation, ConversationToCreate} from "./model/conversation.model";
 import {Subscription} from "rxjs";
 import {ConnectedUser} from "../shared/model/user.model";
 import {ConversationComponent} from "./conversation/conversation.component";
+import {MessageService} from "../messages/service/message.service";
+import {Message} from "./model/message.model";
+import {SseService} from "../messages/service/sse.service";
 
 @Component({
   selector: 'wac-conversations',
@@ -21,6 +24,8 @@ export class ConversationsComponent implements OnInit, OnDestroy {
   conversationService = inject(ConversationService);
   toastService = inject(ToastService);
   oauth2Service = inject(Oauth2AuthService);
+  sseService = inject(SseService);
+  messageService = inject(MessageService);
 
   conversations = new Array<Conversation>();
   selectedConversation: Conversation | undefined;
@@ -28,6 +33,8 @@ export class ConversationsComponent implements OnInit, OnDestroy {
   private createSub: Subscription | undefined;
   private getAllSub: Subscription | undefined;
   private getOneByPublicIdSub: Subscription | undefined;
+  private deleteSSESub: Subscription | undefined;
+  private viewedMessageSSESub: Subscription | undefined;
 
   connectedUser: ConnectedUser | undefined;
 
@@ -62,6 +69,14 @@ export class ConversationsComponent implements OnInit, OnDestroy {
     if (this.getOneByPublicIdSub) {
       this.getOneByPublicIdSub.unsubscribe();
     }
+
+    if (this.deleteSSESub) {
+      this.deleteSSESub.unsubscribe();
+    }
+
+    if(this.viewedMessageSSESub) {
+      this.viewedMessageSSESub.unsubscribe();
+    }
   }
 
   ngOnInit(): void {
@@ -69,6 +84,9 @@ export class ConversationsComponent implements OnInit, OnDestroy {
     this.listenToGetOneByPublicId();
     this.listenToConversationCreated();
     this.listenToNavigateToConversation();
+    this.listenToSSEDeleteConversation();
+    this.listenToSSENewMessage();
+    this.listenToSSEViewMessage();
   }
 
   private listenToGetAllConversation(): void {
@@ -111,6 +129,7 @@ export class ConversationsComponent implements OnInit, OnDestroy {
         const existingConversation = this.conversations.find(conversation => conversation.members
           .findIndex(member => member.publicId === userPublicId) !== -1);
         if (existingConversation) {
+          this.conversationService.handleMarkAsRead(existingConversation.publicId);
           this.conversationService.navigateToNewConversation(existingConversation);
         } else {
           const newConversation: ConversationToCreate = {
@@ -132,7 +151,51 @@ export class ConversationsComponent implements OnInit, OnDestroy {
     }
     this.selectedConversation = conversation;
     this.selectedConversation.active = true;
+    this.conversationService.handleMarkAsRead(conversation.publicId);
     this.conversationService.navigateToNewConversation(conversation);
+  }
+
+  private listenToSSEDeleteConversation(): void {
+    this.deleteSSESub = this.sseService.deleteConversation.subscribe(uuidDeleted => {
+      const indexToDelete = this.conversations.findIndex(conversation => conversation.publicId === uuidDeleted);
+      this.conversations.splice(indexToDelete, 1);
+      this.toastService.show("Conversation deleted by the user", "SUCCESS");
+    })
+  }
+
+  private listenToSSENewMessage(): void {
+    this.sseService.receiveNewMessage.subscribe(newMessage => {
+      const indexToUpdate = this.conversations.findIndex(conversation => conversation.publicId === newMessage.conversationId);
+      if (indexToUpdate === -1) {
+        this.conversationService.handleGetOne(newMessage.conversationId);
+      } else {
+        const conversationToUpdate = this.conversations[indexToUpdate];
+        if (!conversationToUpdate.messages) {
+          conversationToUpdate.messages = new Array<Message>();
+        }
+        conversationToUpdate.messages.push(newMessage);
+        const sender = this.messageService.extractSender(conversationToUpdate.members, newMessage.senderId!);
+        if (this.oauth2Service.fetchUser().value!.publicId !== sender.publicId) {
+          this.toastService.show(`New message received from ${sender.firstName} ${sender.lastName}`, "SUCCESS");
+        }
+      }
+      this.conversationService.sortConversationByLastMessage(this.conversations);
+    });
+  }
+
+  private listenToSSEViewMessage(): void {
+   this.viewedMessageSSESub = this.sseService.viewMessages.subscribe(
+     conversationViewedForNotification => {
+       if(this.selectedConversation?.publicId === conversationViewedForNotification.conversationId) {
+         conversationViewedForNotification.messageIdsViewed.forEach(messageId => {
+           const messageToUpdate = this.selectedConversation?.messages.find(message => message.publicId === messageId)
+           if(messageToUpdate) {
+             messageToUpdate.state = "READ";
+           }
+         })
+       }
+     }
+   )
   }
 
 }
